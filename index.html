@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,13 +7,22 @@
   <style>
     body {
       font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f8f8f8;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       height: 100vh;
-      margin: 0;
-      background-color: #f8f8f8;
+    }
+    #start-screen, #game-screen {
+      display: none;
+    }
+    .active {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     .grid {
       display: grid;
@@ -37,7 +45,24 @@
       background-color: lightgreen;
       cursor: default;
     }
-    #restart-btn {
+    #left-return-btn, #right-return-btn {
+      position: absolute;
+      font-size: 24px;
+      cursor: pointer;
+      background-color: transparent;
+      border: none;
+      color: black;
+    }
+    #left-return-btn {
+      bottom: 20px;
+      left: 20px;
+    }
+    #right-return-btn {
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+    }
+    #restart-btn, #view-stats-btn {
       margin-top: 20px;
       padding: 10px 20px;
       font-size: 16px;
@@ -47,38 +72,87 @@
       border: none;
       border-radius: 5px;
     }
-    #restart-btn:hover {
+    #restart-btn:hover, #view-stats-btn:hover {
       background-color: #0056b3;
+    }
+    #stats {
+      margin-top: 20px;
+      font-size: 16px;
     }
   </style>
 </head>
 <body>
-  <h1>Memory Game</h1>
-  <div class="grid" id="game-grid"></div>
-  <button id="restart-btn">Restart Game</button>
-  <script>
-    const symbols = ['★', '☆', '▲', '▼', '■', '□', '●', '○'];
-    let cards = [...symbols, ...symbols];
-    const grid = document.getElementById('game-grid');
-    const restartBtn = document.getElementById('restart-btn');
+  <!-- Start Screen -->
+  <div id="start-screen" class="active">
+    <h1>Memory Game</h1>
+    <button id="start-btn">Start Game</button>
+    <button id="view-stats-btn">View Button Clicks</button>
+  </div>
 
+  <!-- Game Screen -->
+  <div id="game-screen">
+    <h1>Memory Game</h1>
+    <div id="stats">
+      <p>Level: <span id="level">1</span></p>
+      <p>Time Left: <span id="time-left">30</span>s</p>
+      <p>Total Attempts: <span id="attempts">0</span></p>
+      <p>Match Accuracy: <span id="accuracy">0</span>%</p>
+    </div>
+    <div class="grid" id="game-grid"></div>
+    <button id="restart-btn">Restart Game</button>
+    <button id="left-return-btn">←</button>
+    <button id="right-return-btn">←</button>
+  </div>
+
+  <script>
+    // Game variables
+    const symbols = ['★', '☆', '▲', '▼', '■', '□', '●', '○'];
+    const startScreen = document.getElementById('start-screen');
+    const gameScreen = document.getElementById('game-screen');
+    const gameGrid = document.getElementById('game-grid');
+    const restartBtn = document.getElementById('restart-btn');
+    const leftReturnBtn = document.getElementById('left-return-btn');
+    const rightReturnBtn = document.getElementById('right-return-btn');
+    const viewStatsBtn = document.getElementById('view-stats-btn');
+    const levelSpan = document.getElementById('level');
+    const timeLeftSpan = document.getElementById('time-left');
+    const attemptsSpan = document.getElementById('attempts');
+    const accuracySpan = document.getElementById('accuracy');
+
+    let level = 1;
+    let maxTime = 30;
+    let timeLeft = maxTime;
+    let attempts = 0;
+    let matches = 0;
+    let timer;
     let firstCard = null;
     let secondCard = null;
-    let matchedPairs = 0;
+    let leftButtonClicks = 0;
+    let rightButtonClicks = 0;
+
+    function switchToStartScreen() {
+      clearInterval(timer);
+      gameScreen.classList.remove('active');
+      startScreen.classList.add('active');
+    }
 
     function initializeGame() {
-      grid.innerHTML = '';
-      matchedPairs = 0;
-      firstCard = null;
-      secondCard = null;
-      cards = [...symbols, ...symbols];
-      cards.sort(() => Math.random() - 0.5);
+      gameGrid.innerHTML = '';
+      levelSpan.textContent = level;
+      timeLeft = maxTime;
+      timeLeftSpan.textContent = timeLeft;
+      attempts = 0;
+      matches = 0;
+      attemptsSpan.textContent = attempts;
+      accuracySpan.textContent = 0;
+
+      const cards = [...symbols, ...symbols].slice(0, level + 4).sort(() => Math.random() - 0.5);
 
       cards.forEach(symbol => {
         const card = document.createElement('div');
         card.classList.add('card');
         card.dataset.symbol = symbol;
-        grid.appendChild(card);
+        gameGrid.appendChild(card);
 
         card.addEventListener('click', () => {
           if (card.classList.contains('matched') || card === firstCard || card.textContent) return;
@@ -88,16 +162,26 @@
             firstCard = card;
           } else {
             secondCard = card;
+            attempts++;
+            attemptsSpan.textContent = attempts;
+
             if (firstCard.dataset.symbol === secondCard.dataset.symbol) {
               firstCard.classList.add('matched');
               secondCard.classList.add('matched');
-              matchedPairs++;
+              matches++;
               firstCard = null;
               secondCard = null;
 
-              // Check for game completion
-              if (matchedPairs === symbols.length) {
-                setTimeout(() => alert('Congratulations! You matched all pairs!'), 500);
+              if (matches === cards.length / 2) {
+                clearInterval(timer);
+                if (level < 5) {
+                  alert(`Level ${level} complete! Moving to level ${level + 1}`);
+                  level++;
+                  initializeGame();
+                } else {
+                  alert('Congratulations! You completed all levels!');
+                  switchToStartScreen();
+                }
               }
             } else {
               setTimeout(() => {
@@ -108,14 +192,56 @@
               }, 1000);
             }
           }
+          updateAccuracy();
         });
       });
+
+      startTimer();
+    }
+
+    function updateAccuracy() {
+      const accuracy = attempts > 0 ? (matches / attempts) * 100 : 0;
+      accuracySpan.textContent = accuracy.toFixed(2);
+    }
+
+    function startTimer() {
+      clearInterval(timer);
+      timer = setInterval(() => {
+        timeLeft--;
+        timeLeftSpan.textContent = timeLeft;
+        if (timeLeft <= 0) {
+          clearInterval(timer);
+          alert('Time is up! Restarting the game.');
+          level = 1;
+          switchToStartScreen();
+        }
+      }, 1000);
     }
 
     restartBtn.addEventListener('click', initializeGame);
 
-    // Start the game initially
-    initializeGame();
+    leftReturnBtn.addEventListener('click', () => {
+      leftButtonClicks++;
+      switchToStartScreen();
+    });
+
+    rightReturnBtn.addEventListener('click', () => {
+      rightButtonClicks++;
+      switchToStartScreen();
+    });
+
+    viewStatsBtn.addEventListener('click', () => {
+      alert(`Left Button Clicks: ${leftButtonClicks}\nRight Button Clicks: ${rightButtonClicks}`);
+    });
+
+    document.getElementById('start-btn').addEventListener('click', () => {
+      startScreen.classList.remove('active');
+      gameScreen.classList.add('active');
+      initializeGame();
+    });
+
+    // Initialize on page load
+    switchToStartScreen();
   </script>
 </body>
 </html>
